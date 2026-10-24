@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Secrets
+.env
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+
+# Run output (results/ is uploaded as a CI artifact; the README quotes a run)
+results/
+.deepeval/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

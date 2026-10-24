@@ -1,0 +1,29 @@
+# Tool settings only. This project is not packaged: install with
+#   pip install -r requirements-dev.txt
+
+[project]
+name = "deepeval-rag-quality-gates"
+version = "0.1.0"
+description = "DeepEval quality gates for a small RAG chatbot, run as pytest tests in CI"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Karthick Sivagnanam" }]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
+filterwarnings = [
+    # DeepEval 4.x reminds every run that HallucinationMetric now scores 1 = pass.
+    # quality_gates.yaml already uses the new direction, so the reminder is hidden.
+    "ignore:'HallucinationMetric' now scores:DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+# SIM905 asks for word lists to be written out one item per line; "...".split() reads better.
+ignore = ["SIM905"]

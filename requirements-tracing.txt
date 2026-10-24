@@ -1,0 +1,2 @@
+# Optional: send chatbot traces to Arize Phoenix (see chatbot/tracing.py).
+arize-phoenix-otel==0.17.2

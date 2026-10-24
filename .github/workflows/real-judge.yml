@@ -1,0 +1,69 @@
+# Manual run with a real LLM judge. Not part of pull-request checks: it costs money, needs
+# secrets and the scores vary slightly between runs. Use it to see meaningful scores and to
+# re-baseline quality_gates.yaml for a real judge.
+name: Real judge evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      judge:
+        description: Judge model provider
+        type: choice
+        options: [openai, azure, bedrock]
+        default: openai
+      variant:
+        description: Chatbot variant to evaluate
+        type: choice
+        options: [good, regressed]
+        default: good
+
+permissions:
+  contents: read
+  id-token: write # only used for AWS OIDC when the judge is Bedrock
+
+jobs:
+  real-judge:
+    runs-on: ubuntu-latest
+    environment: real-judge # keeps the secrets behind an environment you control
+    env:
+      DEEPEVAL_TELEMETRY_OPT_OUT: "1"
+      JUDGE: ${{ inputs.judge }}
+      BOT_VARIANT: ${{ inputs.variant }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - if: inputs.judge == 'bedrock'
+        run: pip install aiobotocore
+
+      - name: Configure AWS credentials
+        if: inputs.judge == 'bedrock'
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_BEDROCK_REGION || 'eu-west-2' }}
+
+      - name: DeepEval quality gate with a real judge
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          JUDGE_MODEL: ${{ vars.JUDGE_MODEL }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          AZURE_DEPLOYMENT_NAME: ${{ vars.AZURE_DEPLOYMENT_NAME }}
+          AZURE_MODEL_NAME: ${{ vars.AZURE_MODEL_NAME }}
+          OPENAI_API_VERSION: ${{ vars.OPENAI_API_VERSION }}
+          AWS_BEDROCK_MODEL_NAME: ${{ vars.AWS_BEDROCK_MODEL_NAME }}
+          AWS_BEDROCK_REGION: ${{ vars.AWS_BEDROCK_REGION || 'eu-west-2' }}
+        run: deepeval test run tests/test_quality_gate.py --display failing
+
+      - name: Publish scores to the job summary
+        if: always()
+        run: cat results/${{ inputs.variant }}/summary.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: real-judge-results-${{ inputs.judge }}-${{ inputs.variant }}
+          path: results/

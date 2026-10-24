@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DEEPEVAL_TELEMETRY_OPT_OUT: "1"
+  JUDGE: offline # deterministic, no API key needed
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install ruff==0.17.2
+      - run: ruff check .
+      - run: ruff format --check .
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      # Bottom of the pyramid: chatbot, PII regex and the offline judge itself.
+      - run: pytest --ignore=tests/test_quality_gate.py
+
+  quality-gate:
+    needs: [lint, unit-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+
+      - name: DeepEval quality gate (good bot)
+        run: deepeval test run tests/test_quality_gate.py --display failing
+
+      # Guard the guard: the regressed bot MUST fail the gate. If it passes, the gate is
+      # not able to catch the regressions it exists for, so this job fails.
+      - name: Gate self-test (regressed bot must fail)
+        env:
+          BOT_VARIANT: regressed
+        run: |
+          set +e
+          deepeval test run tests/test_quality_gate.py --display failing > regressed.log 2>&1
+          code=$?
+          set -e
+          tail -n 5 regressed.log
+          if [ "$code" -eq 0 ]; then
+            echo "::error::The regressed bot passed the quality gate. The gate is broken."
+            exit 1
+          fi
+          echo "The gate correctly rejected the regressed bot (exit code $code)."
+
+      - name: Publish scores to the job summary
+        if: always()
+        run: |
+          for variant in good regressed; do
+            if [ -f "results/$variant/summary.md" ]; then
+              cat "results/$variant/summary.md" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: quality-gate-results
+          path: |
+            results/
+            regressed.log

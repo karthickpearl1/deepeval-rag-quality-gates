@@ -1,0 +1,4 @@
+# Pinned to the version this project was verified with. The offline judge reads DeepEval's
+# prompt wording, so upgrade deliberately and re-run the tests (see README).
+deepeval==4.3.1
+pyyaml==6.0.3
